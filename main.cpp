@@ -1,115 +1,108 @@
-#include <iostream>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
+#include <cstring>
+#include <stdexcept>
+#include <cstdint>
+#include <iostream>
+
+#if defined(_WIN32)
+#define fseek _fseeki64
+#define ftell _ftelli64
+#else
+#define fseek fseeko
+#define ftell ftello
+#endif
+
 
 struct file_header
 {
-    int filesize;
+    int64_t filesize;
     char filename[256];
 };
 
 #define ARRAY_NUM(arr) (sizeof(arr)/sizeof(arr[0]))
 
-void pack(std::vector<char*>& file_arr, const char* packname){
-
-    // int len = sizeof(file_header);
-
-    // printf("struct len : %d", len);
-
-    //create new file
+void pack(std::vector<char*>& file_arr, const char* packname) {
+    // 创建新文件
     FILE* fp = fopen(packname, "wb");
-    if (fp == NULL)
-    {
-        printf("open new file failed !!!\n");
-        throw std::logic_error("open new file failed !!!");
+    if (fp == NULL) {
+        printf("打开打包文件失败 !!!\n");
+        throw std::logic_error("打开打包文件失败 !!!");
     }
 
-    for (int i = 0; i < file_arr.size(); ++i)
-    {
+    for (int i = 0; i < file_arr.size(); ++i) {
         const char* filename = file_arr[i];
 
-        //open file
+        // 打开文件
         FILE* tfp = fopen(filename, "rb");
-        if (NULL == tfp)
-        {
-            printf("open file: %s failed !!!\n", filename);
+        if (tfp == NULL) {
+            printf("打开文件: %s 失败 !!!\n", filename);
             continue;
         }
 
-        //calculate file size
-        fseek(tfp, 0, SEEK_END);
-        long filesize = ftell(tfp);
+
+        // 计算文件大小
+        fseek(tfp, 0, SEEK_END);  // 使用 _fseeki64
+        int64_t filesize = ftell(tfp);  // 使用 _ftelli64
         fseek(tfp, 0, SEEK_SET);
-
-        //write the file_header to 1.pack
-        struct file_header hdr = { 0 };
+        printf("filesize : %lld \n", filesize);  // 使用 %lld 来打印 int64_t 类型
+        // 写入文件头
+        file_header hdr = { 0 };
         hdr.filesize = filesize;
-        strcpy(hdr.filename, filename);
-        fwrite(&hdr, 1, sizeof(hdr), fp);
+        strncpy(hdr.filename, filename, sizeof(hdr.filename) - 1);  // 使用 strncpy 防止越界
+        fwrite(&hdr, sizeof(hdr), 1, fp);
 
-        //write the file_body to 1.pack
+        // 写入文件内容
         char buffer[4096] = { 0 };
-        while (1)
-        {
-            int ret = fread(buffer, 1, 4096, tfp);
-            if (ret <= 0)
-            {
-                break;
-            }
+        while (1) {
+            size_t ret = fread(buffer, 1, sizeof(buffer), tfp);
+            if (ret == 0) break;
             fwrite(buffer, 1, ret, fp);
         }
 
-        //close tfp
+        // 关闭文件
         fclose(tfp);
-        printf("file: %s pack success.\n", filename);
-
-        
+        printf("文件: %s 打包成功.\n", filename);
     }
-    //close fp
+
+    // 关闭打包文件
     fclose(fp);
 }
 
-void unpack(const char* unpackname){
-    //create new file
+void unpack(const char* unpackname) {
+    // 打开打包文件
     FILE* fp = fopen(unpackname, "rb");
-    if (fp == NULL)
-    {
-        printf("open new file failed !!!\n");
-        throw std::logic_error("open new file failed !!!");
+    if (fp == NULL) {
+        printf("打开解包文件失败 !!!\n");
+        throw std::logic_error("打开解包文件失败 !!!");
     }
-    
-    struct file_header hdr;
-    while (1)
-    {
-        int ret = fread(&hdr, 1, sizeof(hdr), fp);
-        if (ret <= 0) 
-        {
-            break;
-        }
+
+    file_header hdr;
+    while (1) {
+        size_t ret = fread(&hdr, sizeof(hdr), 1, fp);
+        if (ret == 0) break;
 
         FILE* tfp = fopen(hdr.filename, "wb");
-        if (tfp == NULL)
-        {
+        if (tfp == NULL) {
             fseek(fp, hdr.filesize, SEEK_CUR);
             continue;
         }
-        
-        int size = hdr.filesize;
+
+        int64_t size = hdr.filesize;
         char buffer[4096] = { 0 };
-        while (size > 0)
-        {
-            ret = fread(buffer, 1, size < 4096 ? size : 4096, fp);
-            size -= ret;
+        while (size > 0) {
+            ret = fread(buffer, 1, size < sizeof(buffer) ? size : sizeof(buffer), fp);
             fwrite(buffer, 1, ret, tfp);
+            size -= ret;
         }
 
-        //close tfp
+        // 关闭文件
         fclose(tfp);
     }
-    
-    //close fp
-    fclose(fp);
 
+    // 关闭解包文件
+    fclose(fp);
 }
 
 int main(int argc, char const *argv[])
@@ -145,6 +138,7 @@ int main(int argc, char const *argv[])
 
         } else if (arg == "-up" && i + 1 < argc)
         {
+            
             std::string name = argv[++i]; 
             unpack(name.c_str());
             // std::cout << "unpackname" << unpackname << std::endl;
@@ -153,7 +147,5 @@ int main(int argc, char const *argv[])
             std::cout << "Unknown argument: " << arg << std::endl;
         }
     }
-    ; 
-    
     return 0;
 }
